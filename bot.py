@@ -4,12 +4,20 @@ from discord.utils import get
 from discord import app_commands
 import pickle
 
-
-
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix = '%', intents=intents)
+
+try:
+    votes = pickle.load(open("votes.p", "rb"))
+except FileNotFoundError:
+    votes = []
+
+try:
+    guilds = pickle.load(open("guilds.p", "rb"))
+except FileNotFoundError:
+    guilds = []
 
 @bot.event
 async def on_ready():
