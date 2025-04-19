@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import pickle
+import json
 
 intents = discord.Intents.default()
 intents.members = True
@@ -79,6 +80,10 @@ try:
     guilds = pickle.load(open("guilds.p", "rb"))
 except FileNotFoundError:
     guilds = []
+
+with open('config.json', 'r') as f:
+    config = json.load(f)
+    TOKEN = config['token']
 
 @bot.event
 async def on_ready():
@@ -311,4 +316,4 @@ async def synccmd(ctx: commands.Context):
     return
 
 
-bot.run("MTM1MjEwMTUzNjI5NzM5MDEyMQ.GwsMY-.BTt_IzRSiPOtLFa-79sz_dVgtPxQ9Lx9BPbt8s")
+bot.run(TOKEN)
