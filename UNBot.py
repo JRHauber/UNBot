@@ -61,6 +61,15 @@ class Vote:
     def AddVote(self, user: int, vote: Responses):
         self.votes[user] = vote
 
+async def send_long_message(interaction: discord.Interaction, text: str, ephem: bool):
+    MAX_LENGTH = 2000
+    if len(text) <= MAX_LENGTH:
+        await interaction.response.send_message(text, ephemeral=ephem)
+    else:
+        chunks = [text[i:i + MAX_LENGTH] for i in range(0, len(text), MAX_LENGTH)]
+        for chunk in chunks:
+            await interaction.response.send_message(chunk, ephemeral=ephem)
+
 try:
     votes = pickle.load(open("votes.p", "rb"))
 except FileNotFoundError:
@@ -118,6 +127,25 @@ async def guildupdate(interaction: discord.Interaction, role: discord.Role, coun
     guilds.append(temp)
     await interaction.response.send_message(temp.SetCount(count) + " - " + temp.SetDelegates(count2), ephemeral = True)
     pickle.dump(guilds, open("guilds.p", "wb"))
+
+@bot.tree.error
+async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
+    if isinstance(error, discord.app_commands.MissingRole):
+        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
+
+@bot.tree.command(name="guild_check", description = "Check all guild data", guild = GUILD_ID)
+@app_commands.checks.has_role(1348752459287367730)
+async def guildcheck(interaction: discord.Interaction):
+    output = "```\n"
+    for g in guilds:
+        for r in interaction.guild.roles:
+            if r.id == g.Role():
+                name = r.name
+        mem_count = g.Count()
+        del_count = g.Delegates()
+        output += f"{name} - Members: {mem_count} - Delegates: {del_count}\n"
+    output += "```"
+    await interaction.response.send_message(output, ephemeral=True)
 
 @bot.tree.error
 async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
