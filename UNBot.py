@@ -378,16 +378,21 @@ async def on_error(interaction: discord.Interaction, error: discord.app_commands
         await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
 
 @bot.tree.command(name="census", description="take a census of member groups", guild =  GUILD_ID)
-@app_commands.checks.has_role(1348752329964388383)
+@app_commands.checks.has_role(1348752459287367730)
 async def census(interaction: discord.Interaction):
+    output = ""
     for v in guilds:
         for g in bot.guilds:
             if g.id == v.Server():
                 for r in g.roles:
                     if r.id == v.CitizenRole():
                         v.SetCount(len(r.members))
-                        await interaction.response.send_message(f"Set {v.Name()} member count to {len(r.members)}")
-                        pickle.dump(guilds, open("guilds.p", "wb"))
+                        output += f"Set {v.Name()} member count to {len(r.members)}\n"
+                        break
+                break
+    pickle.dump(guilds, open("guilds.p", "wb"))
+    await interaction.response.send_message(output)
+    print("Census complete")
 
 
 @bot.tree.error
@@ -401,7 +406,7 @@ async def citizenrole(interaction: discord.Interaction, name: str, role: discord
     for g in guilds:
         if g.Name().lower() == name.lower() and g.Server() == interaction.guild_id:
             g.SetCitizen(role.id)
-            await interaction.response.send_message(f"You've set the role id for {g.Name()} to {g.CitizenRole()}")
+            await interaction.response.send_message(f"You've set the role id for {g.Name()} to {g.CitizenRole()}", ephemeral=True)
             pickle.dump(guilds, open("guilds.p", "wb"))
             print(f"Citizen role updated for {g.Name()}")
             return
