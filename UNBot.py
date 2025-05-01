@@ -387,6 +387,7 @@ async def census(interaction: discord.Interaction):
                     if r.id == v.CitizenRole():
                         v.SetCount(len(r.members))
                         await interaction.response.send_message(f"Set {v.Name()} member count to {len(r.members)}")
+                        pickle.dump(guilds, open("guilds.p", "wb"))
 
 
 @bot.tree.error
