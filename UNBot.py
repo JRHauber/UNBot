@@ -4,6 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 import pickle
 import json
+import asyncio
 
 intents = discord.Intents.default()
 intents.members = True
@@ -16,10 +17,13 @@ class Responses(enum.Enum):
     abstain = 3
 
 class VotingGuild:
-    def __init__(self, role: int, membercount: int, delegatecount: int):
+    def __init__(self, name: str, role: int, membercount: int, delegatecount: int):
+        self.name = name
         self.role = role
         self.membercount = membercount
         self.delegatecount = delegatecount
+        self.serverid = 0
+        self.citizenrole = 0
 
     def __str__(self):
         return self.role
@@ -33,6 +37,15 @@ class VotingGuild:
     def Delegates(self):
         return self.delegatecount
 
+    def Server(self):
+        return self.serverid
+
+    def CitizenRole(self):
+        return self.citizenrole
+
+    def Name(self):
+        return self.name
+
     def SetCount(self, count: int):
         self.membercount = count
         return(f"Member count set to: {self.membercount}")
@@ -40,6 +53,15 @@ class VotingGuild:
     def SetDelegates(self, count: int):
         self.delegatecount = count
         return(f"Delegate count set to: {self.delegatecount}")
+
+    def SetServer(self, server: int):
+        self.serverid = server
+        return(f"Server id set to {self.serverid}")
+
+    def SetCitizen(self, role: int):
+        self.citizenrole = role
+        return(f"Citizen role set to {self.citizenrole}")
+
 
 class Vote:
     def __init__(self, name: str, text: str):
@@ -70,6 +92,38 @@ async def send_long_message(interaction: discord.Interaction, text: str, ephem: 
         chunks = [text[i:i + MAX_LENGTH] for i in range(0, len(text), MAX_LENGTH)]
         for chunk in chunks:
             await interaction.response.send_message(chunk, ephemeral=ephem)
+
+@bot.event
+async def on_guild_channel_create(channel):
+    if "ticket" in channel.name.lower() and channel.guild.id == GUILD_ID.id:
+        await asyncio.sleep(2)
+        await channel.send("""
+            Hello! Thank you for creating a ticket to have your group join the United Nations of Bitcraft. If you did this in error, please click the close ticket button.
+            To help expedite the process, please answer the following questions to verify you meet the requirements for membership.
+            1) Does your group have 15 Unique Members? (i.e, members that are not already in another UNB group)
+            2) Does your group have a defined leadership structure?
+            3) If the answers to the above questions are yes, who are your delegates you'll be sending? Delegates must be leaders of the group and you can send up to 3. Delegates must be at least 18 years old.
+            4) Do you want to send a moderator? Moderates must be non-leaders and each group can send 1. Moderators must be at least 18 years old.
+            """)
+
+@bot.event
+async def on_member_join(member):
+    guild_list = ""
+    for g in guilds:
+        guild_list += member.guild.get_role(g.Role()).name + ", "
+    guild_list = guild_list[:-2]
+    await asyncio.sleep(5)
+    await member.send(f"""
+        Greetings! Welcome to the United Nations of Bitcraft Discord server!
+        You will automatically be granted the observer role upon joining the server.
+        If you are a in one of our member groups, please head to this channel to get your role: https://discord.com/channels/1260736434193567745/1364546829466996757
+        The current member groups are: {guild_list}.
+        There will also be other roles to collect in the channel, please be sure to check those out and check back in periodicially to see if new roles you may be interested in are available.
+        Regards,
+        The UNB Team
+    """)
+    print(f"Sent welcome message to {member.name}")
+
 
 try:
     votes = pickle.load(open("votes.p", "rb"))
@@ -127,8 +181,9 @@ async def guildupdate(interaction: discord.Interaction, role: discord.Role, coun
         if g.Role() == role.id:
             await interaction.response.send_message(g.SetCount(count) + " - " + g.SetDelegates(count2), ephemeral = True)
             pickle.dump(guilds, open("guilds.p", "wb"))
+            print(f"{interaction.user.name} edited {interaction.guild.get_role(role.id).name} to {count} population - {count2} delegates.")
             return
-    temp = VotingGuild(role.id, count, count2)
+    temp = VotingGuild(interaction.guild.get_role(role.id).name, role.id, count, count2)
     guilds.append(temp)
     await interaction.response.send_message(temp.SetCount(count) + " - " + temp.SetDelegates(count2), ephemeral = True)
     pickle.dump(guilds, open("guilds.p", "wb"))
@@ -162,7 +217,7 @@ async def on_error(interaction: discord.Interaction, error: discord.app_commands
 async def guildcount(interaction: discord.Interaction, role: discord.Role):
     for g in guilds:
         if g.Role() == role.id:
-            await interaction.response.send_message(f"The guild {g.Role()} has `{g.Count()}` members.", ephemeral=True)
+            await interaction.response.send_message(f"The guild {interaction.guild.get_role(role.id).name} has `{g.Count()}` members.", ephemeral=True)
 
 @bot.tree.error
 async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
@@ -193,14 +248,26 @@ async def vote(interaction:discord.Interaction, vote: str, choice: Responses):
             v.AddVote(interaction.user.id, choice)
             if choice is Responses.yay:
                 await interaction.response.send_message("Your yes vote has been recorded.", ephemeral = True)
+                if interaction.user.nick != None:
+                    print(f"{interaction.user.nick} vote yay")
+                else:
+                    print(f"{interaction.user.name} vote yay")
                 pickle.dump(votes, open("votes.p", "wb"))
                 return
             if choice is Responses.nay:
                 await interaction.response.send_message("Your no vote has been recorded.", ephemeral = True)
+                if interaction.user.nick != None:
+                    print(f"{interaction.user.nick} vote nay")
+                else:
+                    print(f"{interaction.user.name} vote nay")
                 pickle.dump(votes, open("votes.p", "wb"))
                 return
             if choice is Responses.abstain:
                 await interaction.response.send_message("Your abstain vote has been recorded.", ephemeral = True)
+                if interaction.user.nick != None:
+                    print(f"{interaction.user.nick} vote abstain")
+                else:
+                    print(f"{interaction.user.name} vote abstain")
                 pickle.dump(votes, open("votes.p", "wb"))
                 return
     await interaction.response.send_message("Sorry, it doesn't look like there's a vote with that name. Please try again.", ephemeral = True)
@@ -215,8 +282,11 @@ async def on_error(interaction: discord.Interaction, error: discord.app_commands
 @app_commands.checks.has_role(1348752329964388383)
 async def list_votes(interaction:discord.Interaction):
     output = '```'
+    total = 0
+    for g in guilds:
+        total += g.Delegates()
     for v in votes:
-        output += v.Name() + ' \n'
+        output += f"{v.Name()} - {len(v.votes)}/{total}\n"
     output += '```'
     await interaction.response.send_message(output, ephemeral=True)
 
@@ -237,15 +307,15 @@ async def tally(interaction: discord.Interaction, name: str):
     abs_total = 0
     total_power = 0.0
     total = 0
-    for v in votes:
-        if v.Name().title() == name.title():
+    for vote in votes:
+        if vote.Name().title() == name.title():
             yay_output = "```\nYays: \n"
             nay_output = "```\nNays: \n"
             abs_output = "```\nAbstain: \n"
             for g in guilds:
                 total += g.Delegates()
                 total_power += g.Count()
-            for k, v in v.Votes().items():
+            for k, v in vote.Votes().items():
                 if v is Responses.yay:
                     user = interaction.guild.get_member(k)
                     for g in guilds:
@@ -282,17 +352,19 @@ async def tally(interaction: discord.Interaction, name: str):
                                     abs_output += f"{user.nick} - 1 - {str(user_power)}\n"
                                 else:
                                     abs_output += f"{user.name.title()} - 1 - {str(user_power)}\n"
+            present_total = len(vote.Votes())
     if total == 0:
         await interaction.followup.send("Sorry, doesn't look like there's a vote with that name.", ephemeral=True)
         return
     if float((abs_total + nay_total + yay_total)) >= (0.6 * total):
-        await interaction.followup.send("There are enough participating delegates, the vote is valid.", ephemeral=True)
-        yay_output += f"\nDelegate Vote: {yay_total}/{total} ({float((yay_total)/float(total))*100.0:.2f}%)\n"
-        yay_output += f"Population Vote: {yay_total_power}/{total_power} ({(yay_total_power/total_power)*100.0:.2f}%)\n```"
-        nay_output += f"\nDelegate Vote: {nay_total}/{total} ({float((nay_total)/float(total))*100.0:.2f}%)\n"
-        nay_output += f"Population Vote: {nay_total_power}/{total_power} ({(nay_total_power/total_power)*100.0:.2f}%)\n```"
-        abs_output += f"\nDelegate Vote: {abs_total}/{total} ({float((abs_total)/float(total))*100.0:.2f}%)\n"
-        abs_output += f"Population Vote: {abs_total_power}/{total_power} ({(abs_total_power/total_power)*100.0:.2f}%)\n```"
+        present_total_power = yay_total_power + abs_total_power + nay_total_power
+        await interaction.followup.send("There are enough participating delegates, the vote is valid.")
+        yay_output += f"\nDelegate Vote: {yay_total}/{present_total} ({float((yay_total)/float(present_total))*100.0:.2f}%)\n"
+        yay_output += f"Population Vote: {yay_total_power}/{present_total_power} ({(yay_total_power/present_total_power)*100.0:.2f}%)\n```"
+        nay_output += f"\nDelegate Vote: {nay_total}/{present_total} ({float((nay_total)/float(present_total))*100.0:.2f}%)\n"
+        nay_output += f"Population Vote: {nay_total_power}/{present_total_power} ({(nay_total_power/present_total_power)*100.0:.2f}%)\n```"
+        abs_output += f"\nDelegate Vote: {abs_total}/{present_total} ({float((abs_total)/float(present_total))*100.0:.2f}%)\n"
+        abs_output += f"Population Vote: {abs_total_power}/{present_total_power} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
         await interaction.followup.send(yay_output)
         await interaction.followup.send(nay_output)
         await interaction.followup.send(abs_output)
@@ -305,6 +377,59 @@ async def on_error(interaction: discord.Interaction, error: discord.app_commands
     if isinstance(error, discord.app_commands.MissingRole):
         await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
 
+@bot.tree.command(name="census", description="take a census of member groups", guild =  GUILD_ID)
+@app_commands.checks.has_role(1348752329964388383)
+async def census(interaction: discord.Interaction):
+    for v in guilds:
+        for g in bot.guilds:
+            if g.id == v.Server():
+                for r in g.roles:
+                    if r.id == v.CitizenRole():
+                        v.SetCount(len(r.members))
+                        await interaction.response.send_message(f"Set {v.Name()} member count to {len(r.members)}")
+
+
+@bot.tree.error
+async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
+    if isinstance(error, discord.app_commands.MissingRole):
+        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
+
+@bot.tree.command(name="citizen_role", description="set the citizen role for a group")
+@app_commands.checks.has_permissions(administrator=True)
+async def citizenrole(interaction: discord.Interaction, name: str, role: discord.Role):
+    for g in guilds:
+        if g.Name().lower() == name.lower() and g.Server() == interaction.guild_id:
+            g.SetCitizen(role.id)
+            await interaction.response.send_message(f"You've set the role id for {g.Name()} to {g.CitizenRole()}")
+            pickle.dump(guilds, open("guilds.p", "wb"))
+            print(f"Citizen role updated for {g.Name()}")
+            return
+    await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
+    return
+
+@bot.tree.error
+async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
+    if isinstance(error, discord.app_commands.MissingPermissions):
+        await interaction.response.send_message("Sorry, you don't have the permissions to run that command.", ephemeral=True)
+
+@bot.tree.command(name="set_server", description="set a discord server for a group")
+@app_commands.checks.has_permissions(administrator=True)
+async def setserver(interaction: discord.Interaction, name: str):
+    for g in guilds:
+        if g.Name().lower() == name.lower():
+            g.SetServer(interaction.guild_id)
+            pickle.dump(guilds, open("guilds.p", "wb"))
+            await interaction.response.send_message(f"You have change the server id for {g.Name()} to {g.Server()}", ephemeral = True)
+            print(f"Server id updated for {g.Name()}")
+            return
+    await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
+    return
+
+@bot.tree.error
+async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
+    if isinstance(error, discord.app_commands.MissingPermissions):
+        await interaction.response.send_message("Sorry, you don't have the permissions to run that command.", ephemeral=True)
+
 @bot.command()
 async def synccmd(ctx: commands.Context):
     fmt = await bot.tree.sync(guild = GUILD_ID)
@@ -315,5 +440,14 @@ async def synccmd(ctx: commands.Context):
     await ctx.message.delete()
     return
 
+@bot.command()
+async def globalsync(ctx: commands.Context):
+    fmt = await bot.tree.sync()
+    await ctx.send(
+        f"Synced {len(fmt)} commands globally. This might take a while.",
+        delete_after = 1.0
+    )
+    await ctx.message.delete()
+    return
 
 bot.run(TOKEN)
