@@ -389,12 +389,12 @@ async def census(interaction: discord.Interaction):
                     if r.id == v.CitizenRole():
                         temp = v.Count()
                         v.SetCount(len(r.members))
-                        dif = temp - v.Count()
+                        dif = v.Count() - temp
                         if dif > 0:
                             output += f"Set {v.Name()} member count to {len(r.members)} (+{dif})\n"
                             break
                         elif dif < 0:
-                            output += f"Set {v.Name()} member count to {len(r.members)} (-{dif})\n"
+                            output += f"Set {v.Name()} member count to {len(r.members)} ({dif})\n"
                             break
                         else:
                             output += f"Set {v.Name()} member count to {len(r.members)}\n"
