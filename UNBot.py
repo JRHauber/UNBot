@@ -2,6 +2,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from discord.ext import tasks
 import pickle
 import json
 import asyncio
@@ -143,6 +144,7 @@ with open('config.json', 'r') as f:
 @bot.event
 async def on_ready():
     print("UNBot is Running!")
+    census_loop.start()
 
 # UNB ID: 1260736434193567745
 # Dev ID: 738985226570825799
@@ -465,5 +467,31 @@ async def globalsync(ctx: commands.Context):
     )
     await ctx.message.delete()
     return
+
+@tasks.loop(minutes=10080)
+async def census_loop():
+    channel = bot.get_channel(1368195086952960031)
+    output = ""
+    for v in guilds:
+        for g in bot.guilds:
+            if g.id == v.Server():
+                for r in g.roles:
+                    if r.id == v.CitizenRole():
+                        temp = v.Count()
+                        v.SetCount(len(r.members))
+                        dif = v.Count() - temp
+                        if dif > 0:
+                            output += f"{v.Name()} member count is {len(r.members)} (+{dif})\n"
+                            break
+                        elif dif < 0:
+                            output += f"{v.Name()} member count is {len(r.members)} ({dif})\n"
+                            break
+                        else:
+                            output += f"{v.Name()} member count is {len(r.members)}\n"
+                            break
+                break
+    pickle.dump(guilds, open("guilds.p", "wb"))
+    await channel.send(output)
+    print("Auto census complete")
 
 bot.run(TOKEN)
