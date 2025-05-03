@@ -387,9 +387,18 @@ async def census(interaction: discord.Interaction):
             if g.id == v.Server():
                 for r in g.roles:
                     if r.id == v.CitizenRole():
+                        temp = v.Count()
                         v.SetCount(len(r.members))
-                        output += f"Set {v.Name()} member count to {len(r.members)}\n"
-                        break
+                        dif = temp - v.Count()
+                        if dif > 0:
+                            output += f"Set {v.Name()} member count to {len(r.members)} (+{dif})\n"
+                            break
+                        elif dif < 0:
+                            output += f"Set {v.Name()} member count to {len(r.members)} (-{dif})\n"
+                            break
+                        else:
+                            output += f"Set {v.Name()} member count to {len(r.members)}\n"
+                            break
                 break
     pickle.dump(guilds, open("guilds.p", "wb"))
     await interaction.response.send_message(output, ephemeral=True)
