@@ -108,22 +108,23 @@ async def on_guild_channel_create(channel):
 
 @bot.event
 async def on_member_join(member):
-    guild_list = ""
-    for g in guilds:
-        guild_list += member.guild.get_role(g.Role()).name + ", "
-    guild_list = guild_list[:-2]
-    await asyncio.sleep(5)
-    await member.send(f"""
-        Greetings! Welcome to the United Nations of Bitcraft Discord server!
-        You will automatically be granted the observer role upon joining the server.
-        If you are a in one of our member groups, please head to this channel to get your role: https://discord.com/channels/1260736434193567745/1364546829466996757
-        The current member groups are: {guild_list}.
-        There will also be other roles to collect in the channel, please be sure to check those out and check back in periodicially to see if new roles you may be interested in are available.
-        Regards,
-        The UNB Team
-    """)
-    print(f"Sent welcome message to {member.name}")
-
+    if member.guild.id == GUILD_ID.id:
+        guild_list = ""
+        for g in guilds:
+            guild_list += member.guild.get_role(g.Role()).name + ", "
+        guild_list = guild_list[:-2]
+        await asyncio.sleep(5)
+        await member.send(f"""
+            Greetings! Welcome to the United Nations of Bitcraft Discord server!
+            You will automatically be granted the observer role upon joining the server.
+            If you are a in one of our member groups, please head to this channel to get your role: https://discord.com/channels/1260736434193567745/1364546829466996757
+            The current member groups are: {guild_list}.
+            There will also be other roles to collect in the channel, please be sure to check those out and check back in periodicially to see if new roles you may be interested in are available.
+            Regards,
+            The UNB Team
+        """)
+        print(f"Sent welcome message to {member.name}")
+    return
 
 try:
     votes = pickle.load(open("votes.p", "rb"))
@@ -391,7 +392,7 @@ async def census(interaction: discord.Interaction):
                         break
                 break
     pickle.dump(guilds, open("guilds.p", "wb"))
-    await interaction.response.send_message(output)
+    await interaction.response.send_message(output, ephemeral=True)
     print("Census complete")
 
 
