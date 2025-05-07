@@ -191,29 +191,22 @@ async def guildupdate(interaction: discord.Interaction, role: discord.Role, coun
     await interaction.response.send_message(temp.SetCount(count) + " - " + temp.SetDelegates(count2), ephemeral = True)
     pickle.dump(guilds, open("guilds.p", "wb"))
 
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
-
 @bot.tree.command(name="guild_check", description = "Check all guild data", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752459287367730)
 async def guildcheck(interaction: discord.Interaction):
     output = "```\n"
+    total = 0
+    del_total = 0
+    for g in guilds:
+        total += g.Count()
+        del_total += g.Delegates()
     for g in guilds:
         for r in interaction.guild.roles:
             if r.id == g.Role():
                 name = r.name
-        mem_count = g.Count()
-        del_count = g.Delegates()
-        output += f"{name} - Members: {mem_count} - Delegates: {del_count}\n"
+        output += f"{name:<20} - Members: {g.Count():<5} ({(g.Count()/total)*100:.2f}%){" - Delegates: ":>15}{g.Delegates():<5} ({(g.Delegates()/del_total)*100:.2f}%)\n"
     output += "```"
     await interaction.response.send_message(output, ephemeral=True)
-
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
 
 @bot.tree.command(name="guild_count", description = "See the # of members for each guild", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752459287367730)
@@ -221,11 +214,6 @@ async def guildcount(interaction: discord.Interaction, role: discord.Role):
     for g in guilds:
         if g.Role() == role.id:
             await interaction.response.send_message(f"The guild {interaction.guild.get_role(role.id).name} has `{g.Count()}` members.", ephemeral=True)
-
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
 
 @bot.tree.command(name="create_vote", description = "Create a vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
@@ -237,11 +225,6 @@ async def createvote(interaction: discord.Interaction, name: str, text: str):
     > # {v.name}
     > ### {v.text}
     ''')
-
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
 
 @bot.tree.command(name="vote", description="cast your vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
@@ -276,11 +259,6 @@ async def vote(interaction:discord.Interaction, vote: str, choice: Responses):
     await interaction.response.send_message("Sorry, it doesn't look like there's a vote with that name. Please try again.", ephemeral = True)
     return
 
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
-
 @bot.tree.command(name="listvotes", description="list active votes", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
 async def list_votes(interaction:discord.Interaction):
@@ -292,11 +270,6 @@ async def list_votes(interaction:discord.Interaction):
         output += f"{v.Name()} - {len(v.votes)}/{total}\n"
     output += '```'
     await interaction.response.send_message(output, ephemeral=True)
-
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
 
 @bot.tree.command(name="tally", description = "tally a vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
@@ -375,11 +348,6 @@ async def tally(interaction: discord.Interaction, name: str):
         await interaction.followup.send("There aren't enough participating delegates, this is an invalid vote.", ephemeral=True)
         return
 
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
-
 @bot.tree.command(name="census", description="take a census of member groups", guild =  GUILD_ID)
 @app_commands.checks.has_role(1348752459287367730)
 async def census(interaction: discord.Interaction):
@@ -406,12 +374,6 @@ async def census(interaction: discord.Interaction):
     await interaction.response.send_message(output, ephemeral=True)
     print("Census complete")
 
-
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingRole):
-        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
-
 @bot.tree.command(name="citizen_role", description="set the citizen role for a group")
 @app_commands.checks.has_permissions(administrator=True)
 async def citizenrole(interaction: discord.Interaction, name: str, role: discord.Role):
@@ -425,11 +387,6 @@ async def citizenrole(interaction: discord.Interaction, name: str, role: discord
     await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
     return
 
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingPermissions):
-        await interaction.response.send_message("Sorry, you don't have the permissions to run that command.", ephemeral=True)
-
 @bot.tree.command(name="set_server", description="set a discord server for a group")
 @app_commands.checks.has_permissions(administrator=True)
 async def setserver(interaction: discord.Interaction, name: str):
@@ -442,11 +399,6 @@ async def setserver(interaction: discord.Interaction, name: str):
             return
     await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
     return
-
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
-    if isinstance(error, discord.app_commands.MissingPermissions):
-        await interaction.response.send_message("Sorry, you don't have the permissions to run that command.", ephemeral=True)
 
 @bot.command()
 async def synccmd(ctx: commands.Context):
@@ -468,8 +420,10 @@ async def globalsync(ctx: commands.Context):
     await ctx.message.delete()
     return
 
-@tasks.loop(minutes=10080)
+@tasks.loop(minutes=4320)
 async def census_loop():
+    if census_loop.current_loop == 0:
+        return
     channel = bot.get_channel(1368195086952960031)
     output = ""
     for v in guilds:
@@ -493,5 +447,15 @@ async def census_loop():
     pickle.dump(guilds, open("guilds.p", "wb"))
     await channel.send(output)
     print("Auto census complete")
+
+@bot.tree.error
+async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
+    if isinstance(error, discord.app_commands.MissingPermissions):
+        await interaction.response.send_message("Sorry, you don't have the permissions to run that command.", ephemeral=True)
+        return
+    if isinstance(error, discord.app_commands.MissingRole):
+        await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
+        return
+    await interaction.response.send_message(f"The bot has thrown the following error: {error}. Please contact Lanidae and send a screenshot of this message.", ephemeral=True)
 
 bot.run(TOKEN)
