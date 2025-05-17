@@ -6,11 +6,14 @@ from discord.ext import tasks
 import pickle
 import json
 import asyncio
+import datetime
 
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix = '%', intents=intents)
+
+census_time = datetime.time(hour = 23, minute = 20, second = 0)
 
 class Responses(enum.Enum):
     yay = 1
@@ -63,12 +66,13 @@ class VotingGuild:
         self.citizenrole = role
         return(f"Citizen role set to {self.citizenrole}")
 
-
 class Vote:
-    def __init__(self, name: str, text: str):
+    def __init__(self, name: str, text: str, id: int):
         self.text = text
         self.name = name
         self.votes = {}
+        self.id = id
+        self.completed = False
 
     def __str__(self):
         return self.text
@@ -84,6 +88,9 @@ class Vote:
 
     def AddVote(self, user: int, vote: Responses):
         self.votes[user] = vote
+
+    def Complete(self):
+        self.completed = True
 
 async def send_long_message(interaction: discord.Interaction, text: str, ephem: bool):
     MAX_LENGTH = 2000
@@ -145,6 +152,8 @@ with open('config.json', 'r') as f:
 async def on_ready():
     print("UNBot is Running!")
     census_loop.start()
+    print(census_time)
+    print(datetime.datetime.now().weekday())
 
 # UNB ID: 1260736434193567745
 # Dev ID: 738985226570825799
@@ -192,7 +201,7 @@ async def guildupdate(interaction: discord.Interaction, role: discord.Role, coun
     pickle.dump(guilds, open("guilds.p", "wb"))
 
 @bot.tree.command(name="guild_check", description = "Check all guild data", guild = GUILD_ID)
-@app_commands.checks.has_role(1348752459287367730)
+@app_commands.checks.has_role(1348752329964388383)
 async def guildcheck(interaction: discord.Interaction):
     output = "```\n"
     total = 0
@@ -218,19 +227,24 @@ async def guildcount(interaction: discord.Interaction, role: discord.Role):
 @bot.tree.command(name="create_vote", description = "Create a vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
 async def createvote(interaction: discord.Interaction, name: str, text: str):
-    v = Vote(name, text)
+    temp = 0
+    for x in votes:
+        if x.id > temp:
+            temp = x.id
+    temp += 1
+    v = Vote(name, text, temp)
     votes.append(v)
     pickle.dump(votes, open("votes.p", "wb"))
     await interaction.response.send_message(f'''
-    > # {v.name}
+    > # {v.name} ({v.id})
     > ### {v.text}
     ''')
 
 @bot.tree.command(name="vote", description="cast your vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
-async def vote(interaction:discord.Interaction, vote: str, choice: Responses):
+async def vote(interaction:discord.Interaction, vote_choice: int, choice: Responses):
     for v in votes:
-        if v.Name().title() == vote.title():
+        if v.id == vote_choice:
             v.AddVote(interaction.user.id, choice)
             if choice is Responses.yay:
                 await interaction.response.send_message("Your yes vote has been recorded.", ephemeral = True)
@@ -267,13 +281,15 @@ async def list_votes(interaction:discord.Interaction):
     for g in guilds:
         total += g.Delegates()
     for v in votes:
-        output += f"{v.Name()} - {len(v.votes)}/{total}\n"
+        if not v.completed:
+            output += f"{v.Name()} ({v.id}) - {len(v.votes)}/{total}\n"
     output += '```'
     await interaction.response.send_message(output, ephemeral=True)
 
 @bot.tree.command(name="tally", description = "tally a vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
-async def tally(interaction: discord.Interaction, name: str):
+async def tally(interaction: discord.Interaction, id: int):
+    active_vote = None
     await interaction.response.defer(ephemeral=True)
     yay_total_power = 0.0
     yay_total = 0
@@ -284,7 +300,8 @@ async def tally(interaction: discord.Interaction, name: str):
     total_power = 0.0
     total = 0
     for vote in votes:
-        if vote.Name().title() == name.title():
+        if vote.id == id:
+            active_vote = vote
             yay_output = "```\nYays: \n"
             nay_output = "```\nNays: \n"
             abs_output = "```\nAbstain: \n"
@@ -301,9 +318,9 @@ async def tally(interaction: discord.Interaction, name: str):
                                 yay_total += 1
                                 yay_total_power += user_power
                                 if user.nick != None:
-                                    yay_output += f"{user.nick} - 1 - {str(user_power)}\n"
+                                    yay_output += f"{user.nick:<20} - 1 - {user_power:.2f}\n"
                                 else:
-                                    yay_output += f"{user.name.title()} - 1 - {str(user_power)}\n"
+                                    yay_output += f"{user.name.title():<20} - 1 - {user_power:.2f}\n"
                 if v is Responses.nay:
                     user = interaction.guild.get_member(k)
                     for g in guilds:
@@ -313,9 +330,9 @@ async def tally(interaction: discord.Interaction, name: str):
                                 nay_total += 1
                                 nay_total_power += user_power
                                 if user.nick != None:
-                                    nay_output += f"{user.nick} - 1 - {str(user_power)}\n"
+                                    nay_output += f"{user.nick:<20} - 1 - {user_power:.2f}\n"
                                 else:
-                                    nay_output += f"{user.name.title()} - 1 - {str(user_power)}\n"
+                                    nay_output += f"{user.name.title():<20} - 1 - {user_power:.2f}\n"
                 if v is Responses.abstain:
                     user = interaction.guild.get_member(k)
                     for g in guilds:
@@ -325,9 +342,9 @@ async def tally(interaction: discord.Interaction, name: str):
                                 abs_total += 1
                                 abs_total_power += user_power
                                 if user.nick != None:
-                                    abs_output += f"{user.nick} - 1 - {str(user_power)}\n"
+                                    abs_output += f"{user.nick:<20} - 1 - {user_power:.2f}\n"
                                 else:
-                                    abs_output += f"{user.name.title()} - 1 - {str(user_power)}\n"
+                                    abs_output += f"{user.name.title():<20} - 1 - {user_power:.2f}\n"
             present_total = len(vote.Votes())
     if total == 0:
         await interaction.followup.send("Sorry, doesn't look like there's a vote with that name.", ephemeral=True)
@@ -336,16 +353,20 @@ async def tally(interaction: discord.Interaction, name: str):
         present_total_power = yay_total_power + abs_total_power + nay_total_power
         await interaction.followup.send("There are enough participating delegates, the vote is valid.")
         yay_output += f"\nDelegate Vote: {yay_total}/{present_total} ({float((yay_total)/float(present_total))*100.0:.2f}%)\n"
-        yay_output += f"Population Vote: {yay_total_power}/{present_total_power} ({(yay_total_power/present_total_power)*100.0:.2f}%)\n```"
+        yay_output += f"Population Vote: {yay_total_power/present_total_power:.2f} ({(yay_total_power/present_total_power)*100.0:.2f}%)\n```"
         nay_output += f"\nDelegate Vote: {nay_total}/{present_total} ({float((nay_total)/float(present_total))*100.0:.2f}%)\n"
-        nay_output += f"Population Vote: {nay_total_power}/{present_total_power} ({(nay_total_power/present_total_power)*100.0:.2f}%)\n```"
+        nay_output += f"Population Vote: {nay_total_power/present_total_power:.2f} ({(nay_total_power/present_total_power)*100.0:.2f}%)\n```"
         abs_output += f"\nDelegate Vote: {abs_total}/{present_total} ({float((abs_total)/float(present_total))*100.0:.2f}%)\n"
-        abs_output += f"Population Vote: {abs_total_power}/{present_total_power} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
+        abs_output += f"Population Vote: {abs_total_power/present_total_power:./2f} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
         await interaction.followup.send(yay_output)
         await interaction.followup.send(nay_output)
         await interaction.followup.send(abs_output)
+        active_vote.Complete()
+        pickle.dump(votes, open("votes.p", "wb"))
     else:
         await interaction.followup.send("There aren't enough participating delegates, this is an invalid vote.", ephemeral=True)
+        active_vote.Complete()
+        pickle.dump(votes, open("votes.p", "wb"))
         return
 
 @bot.tree.command(name="census", description="take a census of member groups", guild =  GUILD_ID)
@@ -420,9 +441,9 @@ async def globalsync(ctx: commands.Context):
     await ctx.message.delete()
     return
 
-@tasks.loop(minutes=4320)
+@tasks.loop(time=census_time)
 async def census_loop():
-    if census_loop.current_loop == 0:
+    if (datetime.datetime.now().weekday() != 0 and datetime.datetime.now().weekday() != 4):
         return
     channel = bot.get_channel(1368195086952960031)
     output = ""
