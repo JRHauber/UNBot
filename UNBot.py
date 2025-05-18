@@ -13,7 +13,7 @@ intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix = '%', intents=intents)
 
-census_time = datetime.time(hour = 23, minute = 20, second = 0)
+census_time = datetime.time(hour = 0, minute = 0, second = 0)
 
 class Responses(enum.Enum):
     yay = 1
