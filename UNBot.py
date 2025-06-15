@@ -357,7 +357,7 @@ async def tally(interaction: discord.Interaction, id: int):
         nay_output += f"\nDelegate Vote: {nay_total}/{present_total} ({float((nay_total)/float(present_total))*100.0:.2f}%)\n"
         nay_output += f"Population Vote: {nay_total_power/present_total_power:.2f} ({(nay_total_power/present_total_power)*100.0:.2f}%)\n```"
         abs_output += f"\nDelegate Vote: {abs_total}/{present_total} ({float((abs_total)/float(present_total))*100.0:.2f}%)\n"
-        abs_output += f"Population Vote: {abs_total_power/present_total_power:./2f} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
+        abs_output += f"Population Vote: {abs_total_power/present_total_power:.2f} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
         await interaction.followup.send(yay_output)
         await interaction.followup.send(nay_output)
         await interaction.followup.send(abs_output)
@@ -372,8 +372,14 @@ async def tally(interaction: discord.Interaction, id: int):
 @bot.tree.command(name="census", description="take a census of member groups", guild =  GUILD_ID)
 @app_commands.checks.has_role(1348752459287367730)
 async def census(interaction: discord.Interaction):
+    channel = bot.get_channel(1368195086952960031)
     output = ""
+    total = 0
     for v in guilds:
+        if v.Server() == 0:
+            output += f"{v.Name()} member count is {v.Count()}\n"
+            total += v.Count()
+            break
         for g in bot.guilds:
             if g.id == v.Server():
                 for r in g.roles:
@@ -381,18 +387,21 @@ async def census(interaction: discord.Interaction):
                         temp = v.Count()
                         v.SetCount(len(r.members))
                         dif = v.Count() - temp
+                        total += v.Count()
                         if dif > 0:
-                            output += f"Set {v.Name()} member count to {len(r.members)} (+{dif})\n"
+                            output += f"{v.Name()} member count is {len(r.members)} (+{dif})\n"
                             break
                         elif dif < 0:
-                            output += f"Set {v.Name()} member count to {len(r.members)} ({dif})\n"
+                            output += f"{v.Name()} member count is {len(r.members)} ({dif})\n"
                             break
                         else:
-                            output += f"Set {v.Name()} member count to {len(r.members)}\n"
+                            output += f"{v.Name()} member count is {len(r.members)}\n"
                             break
-                break
+
+    output += f"There are currently {total} players represented by the United Nations of Bitcraft."
     pickle.dump(guilds, open("guilds.p", "wb"))
-    await interaction.response.send_message(output, ephemeral=True)
+    await channel.send(output)
+    await interaction.response.send_message("Manual census complete", ephemeral=True)
     print("Census complete")
 
 @bot.tree.command(name="citizen_role", description="set the citizen role for a group")
@@ -447,7 +456,12 @@ async def census_loop():
         return
     channel = bot.get_channel(1368195086952960031)
     output = ""
+    total = 0
     for v in guilds:
+        if v.Server() == 0:
+            output += f"{v.Name()} member count is {v.Count()}\n"
+            total += v.Count()
+            break
         for g in bot.guilds:
             if g.id == v.Server():
                 for r in g.roles:
@@ -455,6 +469,7 @@ async def census_loop():
                         temp = v.Count()
                         v.SetCount(len(r.members))
                         dif = v.Count() - temp
+                        total += v.Count()
                         if dif > 0:
                             output += f"{v.Name()} member count is {len(r.members)} (+{dif})\n"
                             break
@@ -464,7 +479,8 @@ async def census_loop():
                         else:
                             output += f"{v.Name()} member count is {len(r.members)}\n"
                             break
-                break
+
+    output += f"There are currently {total} players represented by the United Nations of Bitcraft."
     pickle.dump(guilds, open("guilds.p", "wb"))
     await channel.send(output)
     print("Auto census complete")
@@ -477,6 +493,11 @@ async def on_error(interaction: discord.Interaction, error: discord.app_commands
     if isinstance(error, discord.app_commands.MissingRole):
         await interaction.response.send_message("Sorry, you don't have the right role to run that command", ephemeral=True)
         return
+    if isinstance(error, discord.errors.Forbidden):
+        print("Forbidden error. Probably a failed DM.")
+        return
     await interaction.response.send_message(f"The bot has thrown the following error: {error}. Please contact Lanidae and send a screenshot of this message.", ephemeral=True)
+
+
 
 bot.run(TOKEN)
