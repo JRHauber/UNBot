@@ -67,12 +67,15 @@ class VotingGuild:
         return(f"Citizen role set to {self.citizenrole}")
 
 class Vote:
-    def __init__(self, name: str, text: str, id: int):
+    def __init__(self, name: str, text: str, id: int, start: float, discuss: float, vote: float):
         self.text = text
         self.name = name
         self.votes = {}
         self.id = id
         self.completed = False
+        self.start_time = start
+        self.discuss_time = discuss
+        self.vote_time = vote
 
     def __str__(self):
         return self.text
@@ -133,6 +136,31 @@ async def on_member_join(member):
         """)
         print(f"Sent welcome message to {member.name}")
     return
+
+@bot.event
+async def on_thread_create(thread: discord.Thread):
+    await thread.join()
+    start_time = thread.created_at.timestamp()
+    discuss_time = start_time + 172800
+    vote_time = discuss_time + 129600
+    id = -1
+
+    #for x in votes:
+    #    if x.id > id:
+    #        id = x.id
+    #id += 1
+
+    message = thread.starter_message
+    if thread.parent_id == 1384663292919677080:
+        v = Vote(thread.name, message.content, id, start_time, discuss_time, vote_time)
+        #votes.append(v)
+        #pickle.dump(votes, open("votes.p", "wb"))
+        await thread.guild.get_channel(1362191308944314721).send(f"""
+        <@1348752329964388383>\nA new proposal has been submitted by: {message.author.display_name}.\n{thread.jump_url}\n**{v.name} ({v.id})**\n\n*{v.text}*\n\n
+Discussion for this proposal will go until: <t:{int(v.discuss_time)}:F>\n
+Voting will occur from then until: <t:{int(v.vote_time)}:F>
+        """)
+        return
 
 try:
     votes = pickle.load(open("votes.p", "rb"))
@@ -232,7 +260,7 @@ async def createvote(interaction: discord.Interaction, name: str, text: str):
         if x.id > temp:
             temp = x.id
     temp += 1
-    v = Vote(name, text, temp)
+    v = Vote(name, text, temp, 0, 0, 0)
     votes.append(v)
     pickle.dump(votes, open("votes.p", "wb"))
     await interaction.response.send_message(f'''
