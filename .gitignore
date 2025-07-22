@@ -1,3 +1,4 @@
 .env
 *.p
 config.json
+*.db
