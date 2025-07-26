@@ -169,7 +169,9 @@ async def on_ready():
     print("UNBot is Running!")
     census_loop.start()
     GENERAL_ASSEMBLY = bot.get_guild(1260736434193567745).get_channel(1348751860030246963)
-    handle_proposal.cancel()
+    data = await db.get_timestamps()
+    if not data == None:
+        handle_proposal.start()
 
 # UNB ID: 1260736434193567745
 # Dev ID: 738985226570825799
@@ -258,26 +260,27 @@ async def createvote(interaction: discord.Interaction, name: str, text: str):
 @bot.tree.command(name="vote", description="cast your vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
 async def vote(interaction:discord.Interaction, proposal_id: int, choice: Responses):
+    await interaction.response.send_message("Casting your vote!", ephemeral = True)
     data = await db.get_proposal(proposal_id)
     if data[3] == 1:
-        await interaction.response.send_message("This vote is no longer active and cannot be voted on", ephemeral = True)
+        await interaction.followup.send("This vote is no longer active and cannot be voted on", ephemeral = True)
         return
     if choice is Responses.yay:
         await db.add_vote(proposal_id, interaction.user.id, choice.value)
-        await interaction.response.send_message("Your yes vote has been recorded.", ephemeral = True)
+        await interaction.followup.send("Your yes vote has been recorded.", ephemeral = True)
         print(f"{interaction.user.display_name} voted yay.")
         return
     if choice is Responses.nay:
         await db.add_vote(proposal_id, interaction.user.id, choice.value)
-        await interaction.response.send_message("Your no vote has been recorded.", ephemeral = True)
+        await interaction.followup.send("Your no vote has been recorded.", ephemeral = True)
         print(f"{interaction.user.display_name} voted nay.")
         return
     if choice is Responses.abstain:
         await db.add_vote(proposal_id, interaction.user.id, choice.value)
-        await interaction.response.send_message("Your abstain vote has been recorded.", ephemeral = True)
+        await interaction.followup.send("Your abstain vote has been recorded.", ephemeral = True)
         print(f"{interaction.user.display_name} voted abs.")
         return
-    await interaction.response.send_message("Sorry, it doesn't look like there's a vote with that name. Please try again.", ephemeral = True)
+    await interaction.followup.send("Sorry, it doesn't look like there's a vote with that name. Please try again.", ephemeral = True)
     return
 
 @bot.tree.command(name="listvotes", description="list active votes", guild = GUILD_ID)
@@ -305,6 +308,11 @@ async def tally(interaction: discord.Interaction, id: int):
     abs_total = 0
     total = 0
 
+    #Initialize Output Strings
+    yay_output = "```\nYays: \n\n"
+    nay_output = "```\nNays: \n\n"
+    abs_output = "```\nAbstain: \n\n"
+
     # Loop Through Guilds
     for g in guilds:
         # Add to total Delegate and Population Vote
@@ -317,11 +325,6 @@ async def tally(interaction: discord.Interaction, id: int):
         # Skip if vote is set to default value
         if d[2] == -2:
             continue
-
-        # Initialize Output Strings
-        yay_output = "```\nYays: \n"
-        nay_output = "```\nNays: \n"
-        abs_output = "```\nAbstain: \n"
 
 
         # Yay vote processing
@@ -339,7 +342,7 @@ async def tally(interaction: discord.Interaction, id: int):
                         yay_total_power += (float(g.Count())/float(g.Delegates()))
 
                         # Adding to output string
-                        yay_output += f"{user.display_name:<20} - 1 - {(float(g.Count())/float(g.Delegates())):.2f}\n"
+                        yay_output += f"{user.display_name:<20} - {(float(g.Count())/float(g.Delegates())):.2f}\n"
 
         # Nay vote Processing
         if d[2] == -1:
@@ -356,7 +359,7 @@ async def tally(interaction: discord.Interaction, id: int):
                         nay_total_power += (float(g.Count())/float(g.Delegates()))
 
                         # Adding to output string
-                        nay_output += f"{user.display_name:<20} - 1 - {(float(g.Count())/float(g.Delegates())):.2f}\n"
+                        nay_output += f"{user.display_name:<20} - {(float(g.Count())/float(g.Delegates())):.2f}\n"
 
         # Abstain vote Processing
         if d[2] == 0:
@@ -373,18 +376,18 @@ async def tally(interaction: discord.Interaction, id: int):
                         abs_total_power += (float(g.Count())/float(g.Delegates()))
 
                         # Adding to output string
-                        abs_output += f"{user.display_name:<20} - 1 - {(float(g.Count())/float(g.Delegates())):.2f}\n"
+                        abs_output += f"{user.display_name:<20} - {(float(g.Count())/float(g.Delegates())):.2f}\n"
 
     if True: #float((abs_total + nay_total + yay_total)) >= (0.5 * total):
         present_total = yay_total + abs_total + nay_total
         present_total_power = yay_total_power + abs_total_power + nay_total_power
         await interaction.followup.send("There are enough participating delegates, the vote is valid.")
         yay_output += f"\nDelegate Vote: {yay_total}/{present_total} ({float((yay_total)/float(present_total))*100.0:.2f}%)\n"
-        yay_output += f"Population Vote: {yay_total_power/present_total_power:.2f} ({(yay_total_power/present_total_power)*100.0:.2f}%)\n```"
+        yay_output += f"Population Vote: {yay_total_power} ({(yay_total_power/present_total_power)*100.0:.2f}%)\n```"
         nay_output += f"\nDelegate Vote: {nay_total}/{present_total} ({float((nay_total)/float(present_total))*100.0:.2f}%)\n"
-        nay_output += f"Population Vote: {nay_total_power/present_total_power:.2f} ({(nay_total_power/present_total_power)*100.0:.2f}%)\n```"
+        nay_output += f"Population Vote: {nay_total_power} ({(nay_total_power/present_total_power)*100.0:.2f}%)\n```"
         abs_output += f"\nDelegate Vote: {abs_total}/{present_total} ({float((abs_total)/float(present_total))*100.0:.2f}%)\n"
-        abs_output += f"Population Vote: {abs_total_power/present_total_power:.2f} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
+        abs_output += f"Population Vote: {abs_total_power} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
         await interaction.followup.send(yay_output)
         await interaction.followup.send(nay_output)
         await interaction.followup.send(abs_output)
@@ -398,37 +401,31 @@ async def tally(interaction: discord.Interaction, id: int):
 @app_commands.checks.has_role(1348752459287367730)
 async def census(interaction: discord.Interaction):
     channel = bot.get_channel(1368195086952960031)
-    output = ""
+    output = "```"
+    output += f"\nGroup Name {" " * 20} Member Count {" " * 5} Percentage {" " * 5} Change {" " * 5}"
+    output += f"\n{"-" * 75}"
     total = 0
-    for g in guilds:
-        print(g.name)
-        if g.Server() == 0:
-            output += f"{g.Name()} member count is {g.Count()}\n"
-            total += g.Count()
+    new_total = 0
+    dif = 0
+    for v in guilds:
+        total += v.Count()
+    for v in guilds:
+        if v.Server() == 0:
+            output += f"\n{v.Name(): <31} {v.Count(): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
+            new_total += v.Count()
             continue
-        for s in bot.guilds:
-            if s.id == g.Server():
-                for r in s.roles:
-                    if r.id == g.CitizenRole():
-                        temp = g.Count()
-                        g.SetCount(len(r.members))
-                        dif = g.Count() - temp
-                        total += g.Count()
-                        if dif > 0:
-                            output += f"{g.Name()} member count is {len(r.members)} (+{dif})\n"
-                            continue
-                        elif dif < 0:
-                            output += f"{g.Name()} member count is {len(r.members)} ({dif})\n"
-                            continue
-                        else:
-                            output += f"{g.Name()} member count is {len(r.members)}\n"
-                            continue
-
-    output += f"There are currently {total} players represented by the United Nations of Bitcraft."
-    pickle.dump(guilds, open("guilds.p", "wb"))
+        for g in bot.guilds:
+            if g.id == v.Server():
+                for r in g.roles:
+                    if r.id == v.CitizenRole():
+                        temp = v.Count()
+                        v.SetCount(len(r.members))
+                        new_total += len(r.members)
+                        dif = v.Count() - temp
+                        output += f"\n{v.Name(): <31} {len(r.members): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
+    output += f"\n\nThere are currently {new_total} players represented by the United Nations of Bitcraft.```"
     await channel.send(output)
-    await interaction.response.send_message("Manual census complete", ephemeral=True)
-    print("Census complete")
+    pickle.dump(guilds, open("guilds.p", "wb"))
 
 @bot.tree.command(name="citizen_role", description="set the citizen role for a group")
 @app_commands.checks.has_permissions(administrator=True)
@@ -504,14 +501,18 @@ async def census_loop():
     if (datetime.datetime.now().weekday() != 0 and datetime.datetime.now().weekday() != 4):
         return
     channel = bot.get_channel(1368195086952960031)
-    output = ""
+    output = "```"
+    output += f"\nGroup Name {" " * 20} Member Count {" " * 5} Percentage {" " * 5} Change {" " * 5}"
+    output += f"\n{"-" * 75}"
     total = 0
     new_total = 0
+    dif = 0
     for v in guilds:
         total += v.Count()
     for v in guilds:
         if v.Server() == 0:
-            output += f"{v.Name()} member count is {v.Count()} - ({(float(v.Count())/float(total))* 100.0:.2f}%)\n"
+            output += f"\n{v.Name(): <31} {v.Count(): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
+            new_total += v.Count()
             continue
         for g in bot.guilds:
             if g.id == v.Server():
@@ -521,20 +522,10 @@ async def census_loop():
                         v.SetCount(len(r.members))
                         new_total += len(r.members)
                         dif = v.Count() - temp
-                        if dif > 0:
-                            output += f"{v.Name()} member count is {len(r.members)} - ({(float(len(r.members))/float(total))* 100.0:.2f}%) (+{dif})\n"
-                            continue
-                        elif dif < 0:
-                            output += f"{v.Name()} member count is {len(r.members)} - ({(float(len(r.members))/float(total))* 100.0:.2f}%) ({dif})\n"
-                            continue
-                        else:
-                            output += f"{v.Name()} member count is {len(r.members)} - ({(float(len(r.members))/float(total))* 100.0:.2f}%)\n"
-                            continue
-
-    output += f"There are currently {new_total} players represented by the United Nations of Bitcraft."
-    pickle.dump(guilds, open("guilds.p", "wb"))
+                        output += f"\n{v.Name(): <31} {len(r.members): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
+    output += f"\n\nThere are currently {new_total} players represented by the United Nations of Bitcraft.```"
     await channel.send(output)
-    print("Auto census complete")
+    pickle.dump(guilds, open("guilds.p", "wb"))
 
 @tasks.loop(seconds=30)
 async def handle_proposal():
