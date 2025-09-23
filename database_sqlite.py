@@ -45,6 +45,29 @@ class DatabaseSqlite(database.Database):
         """
         )
 
+        self.db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS delegates (
+          user INTEGER PRIMARY KEY,
+          guild_id INTEGER NOT NULL,
+          missed_votes INTEGER DEFAULT 0,
+          active BOOL DEFAULT False,
+          pop_power INT DEFAULT 0
+        );
+        """
+        )
+
+        self.db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS guilds (
+            guild INTEGER PRIMARY KEY,
+            citizen_role INTEGER DEFAULT 0,
+            server_id INTEGER DEFAULT 0,
+            members INTEGER DEFAULT 0
+        );
+        """
+        )
+
     def sanitize(self, stringy):
         return re.sub(r'[^a-zA-Z0-9 ]+', '', stringy)
 
@@ -209,10 +232,198 @@ class DatabaseSqlite(database.Database):
             cursor = self.db.cursor()
             res = cursor.execute(f"""
             UPDATE proposals
-            SET next_time = next_time + {time}
-            WHERE id = {id}
+            SET next_time = {time}
+            WHERE id = {id};
             """)
             self.db.commit()
             cursor.close()
         finally:
             self.lock.release()
+
+    async def get_delegates(self):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            SELECT * FROM delegates
+            WHERE active = True;
+            """)
+            data = res.fetchall()
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+        return data
+
+    async def get_all_delegates(self):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            SELECT * FROM delegates;
+            """)
+            data = res.fetchall()
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+        return data
+
+    async def add_delegate(self, id, guild):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            INSERT INTO delegates (user, guild_id)
+            VALUES ({id}, {guild});
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def remove_delegate(self, id):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            DELETE FROM delegates
+            WHERE user = {id};
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def activate_delegate(self, id):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            UPDATE delegates
+            SET active = True, missed_votes = 0
+            WHERE user = {id};
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def deactivate_delegate(self, id):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            UPDATE delegates
+            SET active = False
+            WHERE user = {id};
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def set_power(self, id, power):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            UPDATE delegates
+            SET pop_power = {power}
+            WHERE user = {id}
+            RETURNING user, pop_power;
+            """)
+            data = res.fetchall()
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+        return data
+
+    async def miss_vote(self, id, missed):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            UPDATE delegates
+            SET missed_votes = {missed}
+            WHERE user = {id}
+            RETURNING user, missed_votes;
+            """)
+            data = res.fetchall()
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+        return data
+
+    async def add_guild(self, guild):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            INSERT INTO guilds (guild)
+            VALUES ({guild});
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def set_guild_server(self, guild, server_id):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            UPDATE guilds
+            SET server_id = {server_id}
+            WHERE guild = {guild};
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def set_guild_citizen(self, guild, citizen_role):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            UPDATE guilds
+            SET citizen_role = {citizen_role}
+            WHERE guild = {guild};
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def set_members(self, guild, members):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            UPDATE guilds
+            SET members = {members}
+            WHERE guild = {guild};
+            """)
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+
+    async def get_guilds(self):
+        await self.lock.acquire()
+        try:
+            cursor = self.db.cursor()
+            res = cursor.execute(f"""
+            SELECT * FROM guilds;
+            """)
+            data = res.fetchall()
+            self.db.commit()
+            cursor.close()
+        finally:
+            self.lock.release()
+        return data

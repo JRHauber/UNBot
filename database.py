@@ -34,3 +34,42 @@
 
     async def extend_time(self, id : int, time : int):
         raise NotImplementedError()
+
+    async def add_delegate(self, id : int, guild : int):
+        raise NotImplementedError()
+
+    async def remove_delegate(self, id : int):
+        raise NotImplementedError()
+
+    async def get_delegates(self):
+        raise NotImplementedError()
+
+    async def get_all_delegates(self):
+        raise NotImplementedError()
+
+    async def activate_delegate(self, id : int):
+        raise NotImplementedError()
+
+    async def deactivitate_delegate(self, id : int):
+        raise NotImplementedError()
+
+    async def set_power(self, id : int, power : float):
+        raise NotImplementedError()
+
+    async def miss_vote(self, id : int, missed : int):
+        raise NotImplementedError()
+
+    async def add_guild(self, guild : int):
+        raise NotImplementedError()
+
+    async def set_guild_server(self, guild : int, server_id : int):
+        raise NotImplementedError()
+
+    async def set_guild_citizen(self, guild : int, citizen_role : int):
+        raise NotImplementedError()
+
+    async def set_members(self, guild : int, members : int):
+        raise NotImplementedError()
+
+    async def get_guilds(self):
+        raise NotImplementedError()

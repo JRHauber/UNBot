@@ -8,11 +8,18 @@ import json
 import asyncio
 import datetime
 import database_sqlite
+import math
 
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
-bot = commands.Bot(command_prefix = '%', intents=intents)
+GENERAL_ASSEMBLY = None
+class MyBot(commands.Bot):
+    async def setup_hook(self):
+        census_loop.start()
+        handle_proposal.start()
+
+bot = MyBot(command_prefix='%', intents=intents)
 
 census_time = datetime.time(hour = 0, minute = 0, second = 0)
 
@@ -137,6 +144,20 @@ async def on_member_join(member):
     return
 
 @bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    UNB = await bot.fetch_guild(1260736434193567745)
+    delegate = UNB.get_role(1348752329964388383)
+    guild_list = await db.get_guilds()
+
+    if delegate in after.roles and not delegate in before.roles:
+        for g in guild_list:
+            g_role = UNB.get_role(g[0])
+            if g_role in after.roles:
+                await db.add_delegate(after.id, g[0])
+    if delegate in before.roles and not delegate in after.roles:
+        await db.remove_delegate(after.id)
+
+@bot.event
 async def on_thread_create(thread: discord.Thread):
     await thread.join()
     await discord.utils.sleep_until(datetime.datetime.now() + datetime.timedelta(seconds=5))
@@ -149,7 +170,7 @@ async def on_thread_create(thread: discord.Thread):
         The proposal can be found here: {thread.jump_url}
         Discussion for this proposal will end <t:{int(time.timestamp())}:R> on <t:{int(time.timestamp())}:F>
         """)
-        if handle_proposal.current_loop == 0 and not handle_proposal.is_running():
+        if not handle_proposal.is_running():
             handle_proposal.start()
 
 try:
@@ -161,17 +182,11 @@ with open('config.json', 'r') as f:
     config = json.load(f)
     TOKEN = config['token']
 
-GENERAL_ASSEMBLY = None
-
 @bot.event
 async def on_ready():
     global GENERAL_ASSEMBLY
-    print("UNBot is Running!")
-    census_loop.start()
     GENERAL_ASSEMBLY = bot.get_guild(1260736434193567745).get_channel(1348751860030246963)
-    data = await db.get_timestamps()
-    if not data == None:
-        handle_proposal.start()
+    print("UNBOT IS READY")
 
 # UNB ID: 1260736434193567745
 # Dev ID: 738985226570825799
@@ -186,120 +201,94 @@ async def hello(interaction: discord.Interaction):
 
 @bot.tree.command(name="printrole", description="Print a list of users with this role", guild = GUILD_ID)
 async def hello(interaction: discord.Interaction, role: discord.Role):
-    print("Role Check Command Run")
+    count = 0
     if role == None:
-        print("There is no role like that here")
         await interaction.response.send_message("I'm sorry, but it looks like you asked me to check an invalid role", ephemeral=True)
     else:
         output = ""
         for m in role.members:
-            if m.nick != None:
-                output += m.nick.title() + ', '
-            else:
-                output += m.name.title() + ', '
+            count += 1
+            output += m.display_name+ ", "
         output = output[0:-2]
-        await interaction.response.send_message(f"The following people have the role `{role.name}`: ```{output}```", ephemeral=True)
+        await interaction.response.send_message(f"The following people have the role `{role.name}`: ```{output}``` ({count})", ephemeral=True)
 
-@bot.tree.command(name="guild_update", description = "Update guild information for voting", guild = GUILD_ID)
-@app_commands.rename(count = "members")
-@app_commands.rename(count2 = "delegates")
-@app_commands.describe(count = "Number of Members in group")
-@app_commands.describe(count2 = "Number of Delegates in group")
-@app_commands.checks.has_role(1348752459287367730)
-async def guildupdate(interaction: discord.Interaction, role: discord.Role, count: int, count2: int):
-    for g in guilds:
-        if g.Role() == role.id:
-            g.name = role.name
-            await interaction.response.send_message(g.SetCount(count) + " - " + g.SetDelegates(count2), ephemeral = True)
-            pickle.dump(guilds, open("guilds.p", "wb"))
-            print(f"{interaction.user.name} edited {interaction.guild.get_role(role.id).name} to {count} population - {count2} delegates.")
-            return
-    temp = VotingGuild(interaction.guild.get_role(role.id).name, role.id, count, count2)
-    guilds.append(temp)
-    await interaction.response.send_message(temp.SetCount(count) + " - " + temp.SetDelegates(count2), ephemeral = True)
-    pickle.dump(guilds, open("guilds.p", "wb"))
-
-@bot.tree.command(name="guild_check", description = "Check all guild data", guild = GUILD_ID)
-@app_commands.checks.has_role(1348752329964388383)
-async def guildcheck(interaction: discord.Interaction):
-    output = "```\n"
-    total = 0
-    del_total = 0
-    for g in guilds:
-        total += g.Count()
-        del_total += g.Delegates()
-        print(f"{g.name} - {g.serverid}")
-    for g in guilds:
-        for r in interaction.guild.roles:
-            if r.id == g.Role():
-                name = r.name
-        output += f"{name:<20} - Members: {g.Count():<5} ({(g.Count()/total)*100:.2f}%){" - Delegates: ":>15}{g.Delegates():<5} ({(g.Delegates()/del_total)*100:.2f}%)\n"
-    output += "```"
-    await interaction.response.send_message(output, ephemeral=True)
-
-@bot.tree.command(name="guild_count", description = "See the # of members for each guild", guild = GUILD_ID)
-@app_commands.checks.has_role(1348752459287367730)
-async def guildcount(interaction: discord.Interaction, role: discord.Role):
-    for g in guilds:
-        if g.Role() == role.id:
-            await interaction.response.send_message(f"The guild {interaction.guild.get_role(role.id).name} has `{g.Count()}` members.", ephemeral=True)
-
-@bot.tree.command(name="create_vote", description = "Create a vote", guild = GUILD_ID)
-@app_commands.checks.has_role(1348752329964388383)
-async def createvote(interaction: discord.Interaction, name: str, text: str):
-    ts = datetime.datetime.now()
-    discuss_time = (ts + datetime.timedelta(hours=48))
-    vote_time = (discuss_time + datetime.timedelta(hours=36))
-    data = await db.add_proposal(name, text, discuss_time.timestamp(), vote_time.timestamp())
-    await interaction.response.send_message(f"""
-    {name} - ({data})
-    {text}
-    Discussion Time Ends <t:{int(discuss_time.timestamp())}:R> on <t:{int(discuss_time.timestamp())}:F>
-    """)
+@bot.tree.command(name="create_guild", description = "create a guild", guild = GUILD_ID)
+@app_commands.checks.has_role(1260736434193567745)
+async def create_guild(interaction: discord.Interaction, role : discord.Role):
+    await interaction.response.defer(ephemeral=True)
+    await db.add_guild(role.id)
+    await interaction.followup.send(f"Created a new guild with id: {role.id} and name: {role.name}")
 
 @bot.tree.command(name="vote", description="cast your vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
 async def vote(interaction:discord.Interaction, proposal_id: int, choice: Responses):
-    await interaction.response.send_message("Casting your vote!", ephemeral = True)
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send("Casting your vote!", ephemeral = True)
     data = await db.get_proposal(proposal_id)
     if data[3] == 1:
         await interaction.followup.send("This vote is no longer active and cannot be voted on", ephemeral = True)
+        print(f"{interaction.user.display_name}'s vote failed the active vote check on proposal {proposal_id}")
         return
     if choice is Responses.yay:
         await db.add_vote(proposal_id, interaction.user.id, choice.value)
         await interaction.followup.send("Your yes vote has been recorded.", ephemeral = True)
-        print(f"{interaction.user.display_name} voted yay.")
+        print(f"{interaction.user.display_name} voted yay on proposal {proposal_id}.")
+        await db.activate_delegate(interaction.user.id)
         return
     if choice is Responses.nay:
         await db.add_vote(proposal_id, interaction.user.id, choice.value)
         await interaction.followup.send("Your no vote has been recorded.", ephemeral = True)
-        print(f"{interaction.user.display_name} voted nay.")
+        print(f"{interaction.user.display_name} voted nay on proposal {proposal_id}.")
+        await db.activate_delegate(interaction.user.id)
         return
     if choice is Responses.abstain:
         await db.add_vote(proposal_id, interaction.user.id, choice.value)
         await interaction.followup.send("Your abstain vote has been recorded.", ephemeral = True)
-        print(f"{interaction.user.display_name} voted abs.")
+        print(f"{interaction.user.display_name} voted abs on proposal {proposal_id}.")
+        await db.activate_delegate(interaction.user.id)
         return
+    print(f"{interaction.user.display_name}'s vote failed all checks")
     await interaction.followup.send("Sorry, it doesn't look like there's a vote with that name. Please try again.", ephemeral = True)
     return
 
 @bot.tree.command(name="listvotes", description="list active votes", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
 async def list_votes(interaction:discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     data = await db.get_active_proposals()
     output = "```"
+    v_output = "Not Voted"
     for d in data:
-        if len(d[0]) > 20:
-            name = d[0][:18] + "..."
+        votes = await db.get_votes(d[1])
+        for v in votes:
+            if v[1] == interaction.user.id:
+                match v[2]:
+                    case 1:
+                        v_output = "Yay"
+                        break
+                    case -1:
+                        v_output = "Nay"
+                        break
+                    case 0:
+                        v_output = "Abs"
+                        break
+                    case _:
+                        v_output = "Error"
+                        break
+        if len(d[0]) > 30:
+            name = d[0][:27] + "..."
         else:
             name = d[0]
-        output += f"{name:20} - {d[1]:4}\n"
-    await interaction.response.send_message(output)
+        output += f"{name:30} - {d[1]:4} - {v_output}\n"
+    output += "\n```"
+    await interaction.followup.send(output, ephemeral=True)
 
 @bot.tree.command(name="tally", description = "tally a vote", guild = GUILD_ID)
 @app_commands.checks.has_role(1348752329964388383)
 async def tally(interaction: discord.Interaction, id: int):
     await interaction.response.defer(ephemeral=True)
+    print(f"{interaction.user.display_name} ran the tally command")
+    log_channel = interaction.guild.get_channel(1398987542476619786)
     yay_total_power = 0.0
     yay_total = 0
     nay_total_power = 0.0
@@ -307,78 +296,50 @@ async def tally(interaction: discord.Interaction, id: int):
     abs_total_power = 0.0
     abs_total = 0
     total = 0
-
+    delegate_list = await db.get_delegates()
     #Initialize Output Strings
     yay_output = "```\nYays: \n\n"
     nay_output = "```\nNays: \n\n"
     abs_output = "```\nAbstain: \n\n"
 
-    # Loop Through Guilds
-    for g in guilds:
-        # Add to total Delegate and Population Vote
-        # For % and quorum calculations
-        total += g.Delegates()
+    total = len(delegate_list)
 
     # Loop through all votes for this Proposal
     data = await db.get_votes(id)
+    proposal = await db.get_proposal(id)
     for d in data:
         # Skip if vote is set to default value
         if d[2] == -2:
             continue
 
-
         # Yay vote processing
         if d[2] == 1:
-
-            #Get user object for role detection
-            user = interaction.guild.get_member(d[1])
-
-            #role detection
-            for g in guilds:
-                for r in interaction.guild.roles:
-                    if r in user.roles and r.id == g.Role():
-                        # Add Delegate and Population vote to Yay totals
-                        yay_total += 1
-                        yay_total_power += (float(g.Count())/float(g.Delegates()))
-
-                        # Adding to output string
-                        yay_output += f"{user.display_name:<20} - {(float(g.Count())/float(g.Delegates())):.2f}\n"
+            for x in delegate_list:
+                if x[0] == d[1]:
+                    yay_total += 1
+                    yay_total_power += x[4]
+                    user = await bot.get_user(x[0])
+                    yay_output += f"{user.display_name:<20} - {x[4]:.2f}\n"
 
         # Nay vote Processing
         if d[2] == -1:
-
-            #Get user object for role detection
-            user = interaction.guild.get_member(d[1])
-
-            #role detection
-            for g in guilds:
-                for r in interaction.guild.roles:
-                    if r in user.roles and r.id == g.Role():
-                        # Add Delegate and Population vote to Nay totals
-                        nay_total += 1
-                        nay_total_power += (float(g.Count())/float(g.Delegates()))
-
-                        # Adding to output string
-                        nay_output += f"{user.display_name:<20} - {(float(g.Count())/float(g.Delegates())):.2f}\n"
+            for x in delegate_list:
+                if x[0] == d[1]:
+                    nay_total += 1
+                    nay_total_power += x[4]
+                    user = await bot.get_user(x[0])
+                    nay_output += f"{user.display_name:<20} - {x[4]:.2f}\n"
 
         # Abstain vote Processing
         if d[2] == 0:
+            for x in delegate_list:
+                if x[0] == d[1]:
+                    abs_total += 1
+                    abs_total_power += x[4]
+                    user = await bot.get_user(x[0])
+                    abs_output += f"{user.display_name:<20} - {x[4]:.2f}\n"
 
-            #Get user object for role detection
-            user = interaction.guild.get_member(d[1])
-
-            #role detection
-            for g in guilds:
-                for r in interaction.guild.roles:
-                    if r in user.roles and r.id == g.Role():
-                        # Add Delegate and Population vote to Abstain totals
-                        abs_total += 1
-                        abs_total_power += (float(g.Count())/float(g.Delegates()))
-
-                        # Adding to output string
-                        abs_output += f"{user.display_name:<20} - {(float(g.Count())/float(g.Delegates())):.2f}\n"
-
-    if True: #float((abs_total + nay_total + yay_total)) >= (0.5 * total):
+    if float((abs_total + nay_total + yay_total)) >= math.floor((0.5 * total)):
         present_total = yay_total + abs_total + nay_total
         present_total_power = yay_total_power + abs_total_power + nay_total_power
         await interaction.followup.send("There are enough participating delegates, the vote is valid.")
@@ -392,50 +353,42 @@ async def tally(interaction: discord.Interaction, id: int):
         await interaction.followup.send(nay_output)
         await interaction.followup.send(abs_output)
         await db.complete_vote(id)
+        if yay_total/present_total > 0.5 and yay_total_power/present_total_power > 0.6:
+            output = f"""
+            The Proposal {proposal[1]} ({proposal[0]}) passed on <t:{int(datetime.datetime.now().timestamp())}:F>.
+            """
+            await log_channel.send(output)
+        else:
+            output = f"""
+            The Proposal {proposal[1]} ({proposal[0]}) failed on <t:{int(datetime.datetime.now().timestamp())}:F>.
+            """
+            await log_channel.send(output)
     else:
         await interaction.followup.send("There aren't enough participating delegates, this is an invalid vote.", ephemeral=True)
         await db.complete_vote(id)
+        output = f"""
+            The Proposal {proposal[1]} ({proposal[0]}) failed due to lack of votes on <t:{int(datetime.datetime.now().timestamp())}:F>.
+            """
+        await log_channel.send(output)
+    all_delegates = await db.get_all_delegates()
+    for d in all_delegates:
+        if not d in delegate_list:
+            missed_vote = d[2] + 1
+            x = await db.miss_vote(d[0], missed_vote)
+            if missed_vote >= 3:
+                await db.deactivate_delegate(d[0])
         return
-
-@bot.tree.command(name="census", description="take a census of member groups", guild =  GUILD_ID)
-@app_commands.checks.has_role(1348752459287367730)
-async def census(interaction: discord.Interaction):
-    channel = bot.get_channel(1368195086952960031)
-    output = "```"
-    output += f"\nGroup Name {" " * 20} Member Count {" " * 5} Percentage {" " * 5} Change {" " * 5}"
-    output += f"\n{"-" * 75}"
-    total = 0
-    new_total = 0
-    dif = 0
-    for v in guilds:
-        total += v.Count()
-    for v in guilds:
-        if v.Server() == 0:
-            output += f"\n{v.Name(): <31} {v.Count(): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
-            new_total += v.Count()
-            continue
-        for g in bot.guilds:
-            if g.id == v.Server():
-                for r in g.roles:
-                    if r.id == v.CitizenRole():
-                        temp = v.Count()
-                        v.SetCount(len(r.members))
-                        new_total += len(r.members)
-                        dif = v.Count() - temp
-                        output += f"\n{v.Name(): <31} {len(r.members): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
-    output += f"\n\nThere are currently {new_total} players represented by the United Nations of Bitcraft.```"
-    await channel.send(output)
-    pickle.dump(guilds, open("guilds.p", "wb"))
 
 @bot.tree.command(name="citizen_role", description="set the citizen role for a group")
 @app_commands.checks.has_permissions(administrator=True)
 async def citizenrole(interaction: discord.Interaction, name: str, role: discord.Role):
-    for g in guilds:
-        if g.Name().lower() == name.lower() and g.Server() == interaction.guild_id:
-            g.SetCitizen(role.id)
-            await interaction.response.send_message(f"You've set the role id for {g.Name()} to {g.CitizenRole()}", ephemeral=True)
-            pickle.dump(guilds, open("guilds.p", "wb"))
-            print(f"Citizen role updated for {g.Name()}")
+    guild_list = await db.get_guilds()
+    UNB = await bot.fetch_guild(1260736434193567745)
+    for g in guild_list:
+        guild_name = UNB.get_role(g[0]).name
+        if guild_name.lower() == name.lower() and g[2] == interaction.guild_id:
+            await db.set_guild_citizen(role.id)
+            await interaction.response.send_message(f"You've set the role id for {guild_name} to {role.name}", ephemeral=True)
             return
     await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
     return
@@ -443,13 +396,13 @@ async def citizenrole(interaction: discord.Interaction, name: str, role: discord
 @bot.tree.command(name="set_server", description="set a discord server for a group")
 @app_commands.checks.has_permissions(administrator=True)
 async def setserver(interaction: discord.Interaction, name: str):
-    for g in guilds:
-        print(f"{g.Name().lower()} - {name}")
-        if g.Name().lower() == name.lower():
-            g.SetServer(interaction.guild_id)
-            pickle.dump(guilds, open("guilds.p", "wb"))
-            await interaction.response.send_message(f"You have change the server id for {g.Name()} to {g.Server()}", ephemeral = True)
-            print(f"Server id updated for {g.Name()}")
+    guild_list = await db.get_guilds()
+    UNB = await bot.fetch_guild(1260736434193567745)
+    for g in guild_list:
+        guild_name = UNB.get_role(g[0]).name
+        if guild_name.lower() == name.lower():
+            await db.set_guild_server(interaction.guild_id)
+            await interaction.response.send_message(f"You have change the server id for {guild_name} to {interaction.guild_id}", ephemeral = True)
             return
     await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
     return
@@ -476,6 +429,22 @@ async def extend_vote(interaction: discord.Interaction, proposal_id: int):
         """)
     return
 
+@bot.tree.command(name="populate", description = "populate db with guilds", guild = GUILD_ID)
+@app_commands.checks.has_role(1348752329964388383)
+async def populate(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    guild_list = await db.get_guilds()
+    delegate_list = await db.get_all_delegates()
+    for g in guild_list:
+        count = 0
+        for d in delegate_list:
+                if d[1] == g[0]:
+                    count += 1
+        for d in delegate_list:
+            if d[1] == g[0]:
+                await db.set_power(d[0], float(g[3])/float(count))
+    await interaction.followup.send("Hey it's done")
+
 @bot.command()
 async def synccmd(ctx: commands.Context):
     fmt = await bot.tree.sync(guild = GUILD_ID)
@@ -501,36 +470,47 @@ async def census_loop():
     if (datetime.datetime.now().weekday() != 0 and datetime.datetime.now().weekday() != 4):
         return
     channel = bot.get_channel(1368195086952960031)
+    UNB = await bot.fetch_guild(1260736434193567745)
     output = "```"
     output += f"\nGroup Name {" " * 20} Member Count {" " * 5} Percentage {" " * 5} Change {" " * 5}"
     output += f"\n{"-" * 75}"
     total = 0
-    new_total = 0
-    dif = 0
-    for v in guilds:
-        total += v.Count()
-    for v in guilds:
-        if v.Server() == 0:
-            output += f"\n{v.Name(): <31} {v.Count(): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
-            new_total += v.Count()
-            continue
-        for g in bot.guilds:
-            if g.id == v.Server():
-                for r in g.roles:
-                    if r.id == v.CitizenRole():
-                        temp = v.Count()
-                        v.SetCount(len(r.members))
-                        new_total += len(r.members)
-                        dif = v.Count() - temp
-                        output += f"\n{v.Name(): <31} {len(r.members): <18} {(float(len(r.members))/float(total))* 100.0:<5.2f} {"%":<10} ({dif})"
-    output += f"\n\nThere are currently {new_total} players represented by the United Nations of Bitcraft.```"
+    old_total = 0
+
+    guild_list = await db.get_guilds()
+    delegate_list = await db.get_delegates()
+    for g in guild_list:
+        old_total += g[3]
+    for g in guild_list:
+        if g[2] == 0:
+            output += f"\n{UNB.get_role(g[0]).name: <31} {population: <18} {(float(population)/float(old_total)) * 100.0:5.2f} {"5":<10} (0)"
+        else:
+            server = await bot.fetch_guild(g[2])
+            role = await server.fetch_role(g[1])
+            population = len(role.members)
+            difference = population - g[3]
+            total += population
+            await db.set_members(g[0], population)
+            count = 0
+            for d in delegate_list:
+                if d[1] == g[0]:
+                    count += 1
+            for d in delegate_list:
+                if d[1] == g[0]:
+                    await db.set_power(d[0], float(g[3])/float(count))
+            output += f"""
+            \n{UNB.get_role(g[0]).name: <31} {population: <18} {(float(population)/float(old_total)) * 100.0:5.2f} {"5":<10} ({difference})"""
+    output += f"\n\nThere are currently {total} players represented by the United Nations of Bitcraft.```"
     await channel.send(output)
-    pickle.dump(guilds, open("guilds.p", "wb"))
 
 @tasks.loop(seconds=30)
 async def handle_proposal():
+    await asyncio.sleep(30)
+    global GENERAL_ASSEMBLY
+    GENERAL_ASSEMBLY = bot.get_guild(1260736434193567745).get_channel(1348751860030246963)
+    await asyncio.sleep(5)
     data = await db.get_timestamps()
-    if data == None:
+    if data == []:
         return
     proposal_id = data[0][0]
     time = data[0][1]
@@ -558,6 +538,9 @@ async def handle_proposal():
             await db.complete_vote(proposal_id)
     else:
         return
+
+async def check_delegates():
+    return
 
 @bot.tree.error
 async def on_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
