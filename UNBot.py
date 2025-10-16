@@ -31,81 +31,6 @@ class Responses(enum.Enum):
     nay = -1
     abstain = 0
 
-class VotingGuild:
-    def __init__(self, name: str, role: int, membercount: int, delegatecount: int):
-        self.name = name
-        self.role = role
-        self.membercount = membercount
-        self.delegatecount = delegatecount
-        self.serverid = 0
-        self.citizenrole = 0
-
-    def __str__(self):
-        return self.role
-
-    def Count(self):
-        return self.membercount
-
-    def Role(self):
-        return self.role
-
-    def Delegates(self):
-        return self.delegatecount
-
-    def Server(self):
-        return self.serverid
-
-    def CitizenRole(self):
-        return self.citizenrole
-
-    def Name(self):
-        return self.name
-
-    def SetCount(self, count: int):
-        self.membercount = count
-        return(f"Member count set to: {self.membercount}")
-
-    def SetDelegates(self, count: int):
-        self.delegatecount = count
-        return(f"Delegate count set to: {self.delegatecount}")
-
-    def SetServer(self, server: int):
-        self.serverid = server
-        return(f"Server id set to {self.serverid}")
-
-    def SetCitizen(self, role: int):
-        self.citizenrole = role
-        return(f"Citizen role set to {self.citizenrole}")
-
-class Vote:
-    def __init__(self, name: str, text: str, id: int, start: float, discuss: float, vote: float):
-        self.text = text
-        self.name = name
-        self.votes = {}
-        self.id = id
-        self.completed = False
-        self.start_time = start
-        self.discuss_time = discuss
-        self.vote_time = vote
-
-    def __str__(self):
-        return self.text
-
-    def Text(self):
-        return self.text
-
-    def Name(self):
-        return self.name
-
-    def Votes(self):
-        return self.votes
-
-    def AddVote(self, user: int, vote: Responses):
-        self.votes[user] = vote
-
-    def Complete(self):
-        self.completed = True
-
 @bot.event
 async def on_guild_channel_create(channel):
     if "ticket" in channel.name.lower() and channel.guild.id == GUILD_ID.id:
@@ -126,9 +51,10 @@ async def on_guild_channel_create(channel):
 @bot.event
 async def on_member_join(member):
     if member.guild.id == GUILD_ID.id:
+        guilds = await db.get_guilds()
         guild_list = ""
         for g in guilds:
-            guild_list += member.guild.get_role(g.Role()).name + ", "
+            guild_list += member.guild.get_role(g[0]).name + ", "
         guild_list = guild_list[:-2]
         await asyncio.sleep(5)
         await member.send(f"""
@@ -149,7 +75,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     delegate = UNB.get_role(1348752329964388383)
     guild_list = await db.get_guilds()
 
-    if delegate in after.roles and not delegate in before.roles:
+    if not delegate in before.roles and delegate in after.roles:
         for g in guild_list:
             g_role = UNB.get_role(g[0])
             if g_role in after.roles:
@@ -173,10 +99,6 @@ async def on_thread_create(thread: discord.Thread):
         if not handle_proposal.is_running():
             handle_proposal.start()
 
-try:
-    guilds = pickle.load(open("guilds.p", "rb"))
-except FileNotFoundError:
-    guilds = []
 
 with open('config.json', 'r') as f:
     config = json.load(f)
@@ -213,7 +135,7 @@ async def hello(interaction: discord.Interaction, role: discord.Role):
         await interaction.response.send_message(f"The following people have the role `{role.name}`: ```{output}``` ({count})", ephemeral=True)
 
 @bot.tree.command(name="create_guild", description = "create a guild", guild = GUILD_ID)
-@app_commands.checks.has_role(1260736434193567745)
+@app_commands.checks.has_role(1348752459287367730)
 async def create_guild(interaction: discord.Interaction, role : discord.Role):
     await interaction.response.defer(ephemeral=True)
     await db.add_guild(role.id)
@@ -318,7 +240,7 @@ async def tally(interaction: discord.Interaction, id: int):
                 if x[0] == d[1]:
                     yay_total += 1
                     yay_total_power += x[4]
-                    user = await bot.get_user(x[0])
+                    user = interaction.guild.get_member(x[0])
                     yay_output += f"{user.display_name:<20} - {x[4]:.2f}\n"
 
         # Nay vote Processing
@@ -327,7 +249,7 @@ async def tally(interaction: discord.Interaction, id: int):
                 if x[0] == d[1]:
                     nay_total += 1
                     nay_total_power += x[4]
-                    user = await bot.get_user(x[0])
+                    user = interaction.guild.get_member(x[0])
                     nay_output += f"{user.display_name:<20} - {x[4]:.2f}\n"
 
         # Abstain vote Processing
@@ -336,24 +258,32 @@ async def tally(interaction: discord.Interaction, id: int):
                 if x[0] == d[1]:
                     abs_total += 1
                     abs_total_power += x[4]
-                    user = await bot.get_user(x[0])
+                    user = interaction.guild.get_member(x[0])
                     abs_output += f"{user.display_name:<20} - {x[4]:.2f}\n"
 
     if float((abs_total + nay_total + yay_total)) >= math.floor((0.5 * total)):
+        non_abs_total = yay_total + nay_total
+        non_abs_total_power = yay_total_power + nay_total_power
         present_total = yay_total + abs_total + nay_total
-        present_total_power = yay_total_power + abs_total_power + nay_total_power
+        if (non_abs_total <= (1.0/3.0)*present_total):
+            await interaction.followup.send("Too many people abstained, this proposal needs more discussion. Please create a new proposal")
+            await log_channel.send(f"""
+            The Proposal {proposal[1]} ({proposal[0]}) had too many abstentions and will be sent for rediscussion.
+            """)
+            await db.complete_vote(id)
+            return
         await interaction.followup.send("There are enough participating delegates, the vote is valid.")
-        yay_output += f"\nDelegate Vote: {yay_total}/{present_total} ({float((yay_total)/float(present_total))*100.0:.2f}%)\n"
-        yay_output += f"Population Vote: {yay_total_power} ({(yay_total_power/present_total_power)*100.0:.2f}%)\n```"
-        nay_output += f"\nDelegate Vote: {nay_total}/{present_total} ({float((nay_total)/float(present_total))*100.0:.2f}%)\n"
-        nay_output += f"Population Vote: {nay_total_power} ({(nay_total_power/present_total_power)*100.0:.2f}%)\n```"
-        abs_output += f"\nDelegate Vote: {abs_total}/{present_total} ({float((abs_total)/float(present_total))*100.0:.2f}%)\n"
-        abs_output += f"Population Vote: {abs_total_power} ({(abs_total_power/present_total_power)*100.0:.2f}%)\n```"
+        yay_output += f"\nDelegate Vote: {yay_total}/{non_abs_total} ({float((yay_total)/float(non_abs_total))*100.0:.2f}%)\n"
+        yay_output += f"Population Vote: {yay_total_power} ({(yay_total_power/non_abs_total_power)*100.0:.2f}%)\n```"
+        nay_output += f"\nDelegate Vote: {nay_total}/{non_abs_total} ({float((nay_total)/float(non_abs_total))*100.0:.2f}%)\n"
+        nay_output += f"Population Vote: {nay_total_power} ({(nay_total_power/non_abs_total_power)*100.0:.2f}%)\n```"
+        abs_output += f"\nDelegate Vote: {abs_total}/{non_abs_total} ({float((abs_total)/float(non_abs_total))*100.0:.2f}%)\n"
+        abs_output += f"Population Vote: {abs_total_power} ({(abs_total_power/non_abs_total_power)*100.0:.2f}%)\n```"
         await interaction.followup.send(yay_output)
         await interaction.followup.send(nay_output)
         await interaction.followup.send(abs_output)
         await db.complete_vote(id)
-        if yay_total/present_total > 0.5 and yay_total_power/present_total_power > 0.6:
+        if yay_total/present_total > 0.5 and yay_total_power/non_abs_total_power > 0.6:
             output = f"""
             The Proposal {proposal[1]} ({proposal[0]}) passed on <t:{int(datetime.datetime.now().timestamp())}:F>.
             """
@@ -385,9 +315,9 @@ async def citizenrole(interaction: discord.Interaction, name: str, role: discord
     guild_list = await db.get_guilds()
     UNB = await bot.fetch_guild(1260736434193567745)
     for g in guild_list:
-        guild_name = UNB.get_role(g[0]).name
-        if guild_name.lower() == name.lower() and g[2] == interaction.guild_id:
-            await db.set_guild_citizen(role.id)
+        guild_name = UNB.get_role(g[0])
+        if guild_name.name.lower() == name.lower() and g[2] == interaction.guild.id:
+            await db.set_guild_citizen(g[0], role.id)
             await interaction.response.send_message(f"You've set the role id for {guild_name} to {role.name}", ephemeral=True)
             return
     await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
@@ -399,9 +329,9 @@ async def setserver(interaction: discord.Interaction, name: str):
     guild_list = await db.get_guilds()
     UNB = await bot.fetch_guild(1260736434193567745)
     for g in guild_list:
-        guild_name = UNB.get_role(g[0]).name
-        if guild_name.lower() == name.lower():
-            await db.set_guild_server(interaction.guild_id)
+        guild_name = UNB.get_role(g[0])
+        if guild_name.name.lower() == name.lower():
+            await db.set_guild_server(g[0], interaction.guild.id)
             await interaction.response.send_message(f"You have change the server id for {guild_name} to {interaction.guild_id}", ephemeral = True)
             return
     await interaction.response.send_message("Sorry, something went wrong with the command. Please make sure the guild name you type in is correct. You can check by running /guild_check in the UNB server.")
@@ -465,12 +395,11 @@ async def globalsync(ctx: commands.Context):
     await ctx.message.delete()
     return
 
-@tasks.loop(time=census_time)
-async def census_loop():
-    if (datetime.datetime.now().weekday() != 0 and datetime.datetime.now().weekday() != 4):
-        return
+@bot.tree.command(name="census", description = "census", guild = GUILD_ID)
+@app_commands.checks.has_role(1348752459287367730)
+async def census(interaction: discord.Interaction):
     channel = bot.get_channel(1368195086952960031)
-    UNB = await bot.fetch_guild(1260736434193567745)
+    UNB = bot.get_guild(1260736434193567745)
     output = "```"
     output += f"\nGroup Name {" " * 20} Member Count {" " * 5} Percentage {" " * 5} Change {" " * 5}"
     output += f"\n{"-" * 75}"
@@ -483,10 +412,10 @@ async def census_loop():
         old_total += g[3]
     for g in guild_list:
         if g[2] == 0:
-            output += f"\n{UNB.get_role(g[0]).name: <31} {population: <18} {(float(population)/float(old_total)) * 100.0:5.2f} {"5":<10} (0)"
+            output += f"\n{UNB.get_role(g[0]).name: <31} {g[3]: <18} {(float(g[3])/float(old_total)) * 100.0:5.2f} {"%":<10} (0)"
         else:
-            server = await bot.fetch_guild(g[2])
-            role = await server.fetch_role(g[1])
+            server = bot.get_guild(g[2])
+            role = server.get_role(g[1])
             population = len(role.members)
             difference = population - g[3]
             total += population
@@ -498,8 +427,67 @@ async def census_loop():
             for d in delegate_list:
                 if d[1] == g[0]:
                     await db.set_power(d[0], float(g[3])/float(count))
-            output += f"""
-            \n{UNB.get_role(g[0]).name: <31} {population: <18} {(float(population)/float(old_total)) * 100.0:5.2f} {"5":<10} ({difference})"""
+            output += f"\n{UNB.get_role(g[0]).name: <31} {population: <18} {(float(population)/float(old_total))* 100.0:<5.2f} {"%":<10} ({difference})"
+    output += f"\n\nThere are currently {total} players represented by the United Nations of Bitcraft.```"
+    await channel.send(output)
+
+@bot.tree.command(name="lockdown", description = "lockdown the public channels", guild = GUILD_ID)
+@app_commands.checks.has_any_role("UN Admin", "Moderator")
+async def lockdown(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send("Locking Down Channels", ephemeral = True)
+    public_channels = [1348751905840435291, 1372689285743902771, 1349456170674552942, 1361845749217890334, 1348751860030246963]
+    for c in public_channels:
+        await interaction.guild.get_channel(c).set_permissions(interaction.guild.get_role(1348752788871712929), send_messages = False, create_private_threads = False, create_public_threads = False)
+        await interaction.guild.get_channel(c).set_permissions(interaction.guild.get_role(1372621325293588590), send_messages = False, create_private_threads = False, create_public_threads = False)
+        await interaction.guild.get_channel(c).set_permissions(interaction.guild.get_role(1348752329964388383), send_messages = False, create_private_threads = False, create_public_threads = False)
+        await interaction.guild.get_channel(c).send("This channel has been temporarily locked by the UNB Moderation Team. It will be unlocked later.")
+
+@bot.tree.command(name="remove_lockdown", description = "lockdown the public channels", guild = GUILD_ID)
+@app_commands.checks.has_any_role("UN Admin", "Moderator")
+async def remove_lockdown(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send("Removing Lockdown", ephemeral = True)
+    public_channels = [1348751905840435291, 1372689285743902771, 1349456170674552942, 1361845749217890334, 1348751860030246963]
+    for c in public_channels:
+        await interaction.guild.get_channel(c).set_permissions(interaction.guild.get_role(1348752788871712929), send_messages = True)
+        await interaction.guild.get_channel(c).set_permissions(interaction.guild.get_role(1372621325293588590), send_messages = True)
+        await interaction.guild.get_channel(c).set_permissions(interaction.guild.get_role(1348752329964388383), send_messages = True)
+    await interaction.guild.get_channel(1348751860030246963).set_permissions(interaction.guild.get_role(1348752788871712929), send_messages = False, create_private_threads = False, create_public_threads = False)
+
+
+@tasks.loop(time=census_time)
+async def census_loop():
+    channel = bot.get_channel(1368195086952960031)
+    UNB = bot.get_guild(1260736434193567745)
+    output = "```"
+    output += f"\nGroup Name {" " * 20} Member Count {" " * 5} Percentage {" " * 5} Change {" " * 5}"
+    output += f"\n{"-" * 75}"
+    total = 0
+    old_total = 0
+
+    guild_list = await db.get_guilds()
+    delegate_list = await db.get_delegates()
+    for g in guild_list:
+        old_total += g[3]
+    for g in guild_list:
+        if g[2] == 0:
+            output += f"\n{UNB.get_role(g[0]).name: <31} {g[3]: <18} {(float(g[3])/float(old_total)) * 100.0:<5.2f} {"%":<10} (0)"
+        else:
+            server = bot.get_guild(g[2])
+            role = server.get_role(g[1])
+            population = len(role.members)
+            difference = population - g[3]
+            total += population
+            await db.set_members(g[0], population)
+            count = 0
+            for d in delegate_list:
+                if d[1] == g[0]:
+                    count += 1
+            for d in delegate_list:
+                if d[1] == g[0]:
+                    await db.set_power(d[0], float(g[3])/float(count))
+            output += f"\n{UNB.get_role(g[0]).name: <31} {population: <18} {(float(population)/float(old_total))* 100.0:<5.2f} {"%":<10} ({difference})"
     output += f"\n\nThere are currently {total} players represented by the United Nations of Bitcraft.```"
     await channel.send(output)
 
@@ -523,7 +511,7 @@ async def handle_proposal():
             <@&1348752329964388383>
             The discussion period for {p[1]} - {p[0]} has ended!
             Voting has now opened for this proposal.
-            You can vote using the /vote command, the proposal id is: {p[0]}
+            You can vote using the `/vote` command, the proposal id is: `{p[0]}`
             Voting ends <t:{int(new_time.timestamp())}:R> on <t:{int(new_time.timestamp())}:F>.
             """)
             await db.finish_discuss(proposal_id, int(new_time.timestamp()))

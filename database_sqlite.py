@@ -51,7 +51,7 @@ class DatabaseSqlite(database.Database):
           user INTEGER PRIMARY KEY,
           guild_id INTEGER NOT NULL,
           missed_votes INTEGER DEFAULT 0,
-          active BOOL DEFAULT False,
+          active BOOL DEFAULT True,
           pop_power INT DEFAULT 0
         );
         """
